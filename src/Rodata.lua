@@ -59,6 +59,7 @@ export type UserDatabase = {
 
 export type OrderedDatabase = {
 	OrderedDataStore: OrderedDataStore,
+	DebugMode: boolean,
 }
 
 export type UnboundedDatabase = {
@@ -129,6 +130,26 @@ end
 
 local function isCurrDataGloballySet(metadata: { [string]: any }): boolean
 	return metadata.currDataGloballySet
+end
+
+local function retryCall<T>(
+	maxAttempts: number, 
+	timeBetween: number, 
+	callbackName: string,
+	debugMode: boolean,
+	lambda: () -> T
+): T?
+	for i = 1, maxAttempts do
+		if debugMode then print(`{callbackName} attempt {i}...`) end
+		local success, res = pcall(lambda)
+		if success then
+			return res
+		end
+		task.wait(timeBetween)
+	end
+
+	warn(debug.traceback(`Failed to execute the provided callback successfully after {maxAttempts} attempts.`, 2))
+	return nil
 end
 
 local function loadUserData(
@@ -263,6 +284,9 @@ function Rodata.CreateNewUserDatabase(
 	jobId: string?,
 	placeId: string?
 ): UserDatabase
+	if databaseName == nil then error("databaseName required.") end
+	if memoryStoreName == nil then error("memoryStoreName required.") end
+	
 	if GLOBAL_DATABASE_REFERENCES[databaseName] then
 		error(`A database with the name "{databaseName}" already exists in the cache. Use a different name.`)
 	end
@@ -293,13 +317,16 @@ end
 	----------------------------------[ !!IMPORTANT!! ]---------------------------------
 	----------------[ MAKE SURE TO USE A UNIQUE NAME FOR YOUR DATABASE ]----------------
 ]]
-function Rodata.CreateNewOrderedDatabase(databaseName: string): OrderedDatabase
+function Rodata.CreateNewOrderedDatabase(databaseName: string, debugMode: boolean?): OrderedDatabase
+	if databaseName == nil then error("databaseName required.") end
+	
 	if GLOBAL_DATABASE_REFERENCES[databaseName] then
 		error(`A database with the name "{databaseName}" already exists in the cache. Use a different name.`)
 	end
 	
 	local self: OrderedDatabase = {
 		OrderedDataStore = DataStoreService:GetOrderedDataStore(databaseName),
+		DebugMode = debugMode or false
 	}
 	
 	GLOBAL_DATABASE_REFERENCES[databaseName] = self
@@ -331,6 +358,8 @@ function Rodata.CreateNewUnboundedDatabase(
 	databaseName: string, 
 	debugMode: boolean?
 ): UnboundedDatabase
+	if databaseName == nil then error("databaseName required.") end
+	
 	if GLOBAL_DATABASE_REFERENCES[databaseName] then
 		error(`A database with the name "{databaseName}" already exists in the cache. Use a different name.`)
 	end
@@ -391,102 +420,104 @@ end
 	To retrieve a player's data after they have joined, use Rodata.GetCachedUserData() 
 ]]
 function Rodata.LoadUserData(database: UserDatabase, userId: string): Schema?
-	if type(database) ~= "table" then error("database must be a UserDatabase.") end
-	
-	--[[ Special Case:
-		If a player rejoins the same server quickly and calls LoadUserData() while 
-		the new data is still saving from the old session, add the request to the queue
-	]]
-	local q
-	if (database._userCache[userId] and database._userCache[userId].queue) then
-		q = database._userCache[userId].queue
-	else
-		q = ThreadQueue.new(database.ThreadQueueDebugMode)
-	end
-	
-	--[[
-		Adding this pre-load function to the queue will allow any ongoing save_release operation to finish, 
-		which will avoid the pre-load error below, because without it, if the user joins the same server 
-		quickly and LoadUserData() is called while a save is still executing, it will result in the error 
-		below since dataLoaded doesn't get set to false until after the save_release finishes
-	]]
-	local preSuccess, preRes = ThreadQueue.Enqueue(
-		q,
-		`pre_load_{coroutine.running()}`,
-		function()
-			if database._userCache[userId] and database._userCache[userId].dataLoaded then 
-				error(`User_{userId}'s data has already been loaded with LoadUserData(). Use GetCachedUserData() instead to access the loaded data.`, 0)
-			end
-
-			if database._userCache[userId] == nil then -- when the player first loads in the game
-				database._userCache[userId] = {
-					dataLoaded = false,
-					queue = q,
-					data = nil,
-					isSaving = false
-				}
-			end
-			return true
+	return retryCall(5, 1, "load", database.DebugMode, function(): Schema?
+		if type(database) ~= "table" then error("database must be a UserDatabase.") end
+		
+		--[[ Special Case:
+			If a player rejoins the same server quickly and calls LoadUserData() while 
+			the new data is still saving from the old session, add the request to the queue
+		]]
+		local q
+		if (database._userCache[userId] and database._userCache[userId].queue) then
+			q = database._userCache[userId].queue
+		else
+			q = ThreadQueue.new(database.ThreadQueueDebugMode)
 		end
-	)
-	
-	if not preSuccess then
-		warn(debug.traceback(preRes, 2))
+		
+		--[[
+			Adding this pre-load function to the queue will allow any ongoing save_release operation to finish, 
+			which will avoid the pre-load error below, because without it, if the user joins the same server 
+			quickly and LoadUserData() is called while a save is still executing, it will result in the error 
+			below since dataLoaded doesn't get set to false until after the save_release finishes
+		]]
+		local preSuccess, preRes = ThreadQueue.Enqueue(
+			q,
+			`pre_load_{coroutine.running()}`,
+			function()
+				if database._userCache[userId] and database._userCache[userId].dataLoaded then 
+					error(`User_{userId}'s data has already been loaded with LoadUserData(). Use GetCachedUserData() instead to access the loaded data.`, 0)
+				end
+
+				if database._userCache[userId] == nil then -- when the player first loads in the game
+					database._userCache[userId] = {
+						dataLoaded = false,
+						queue = q,
+						data = nil,
+						isSaving = false
+					}
+				end
+				return true
+			end
+		)
+		
+		if not preSuccess then
+			warn(debug.traceback(preRes, 2))
+			return nil
+		end
+		
+		
+		local success, res = ThreadQueue.Enqueue(
+			database._userCache[userId].queue, 
+			`load_{coroutine.running()}`, 
+			loadUserData, database.DataStore, database.MemStoreSortedMap, database._schema, userId, database.WaitForSessionOnLoad,
+			database.JobId, database.PlaceId
+		)
+		
+		if success then
+			-- add player to the server cache
+			database._userCache[userId].data = res
+			database._userCache[userId].dataLoaded = true
+
+			if database.DebugMode then print("Data loaded successfully:", res) end
+
+			return res
+		end
+
+		if res == WAIT_FOR_SESSION_ERR_MSG then
+			if database.DebugMode then print("retrying to load data...") end
+			-- keep retrying to load the data
+			for i = 1, SETTINGS.WaitForSession_MAX_RETRIES do
+				if (database.DebugMode and not database.ThreadQueueDebugMode) then print("retry_load_"..i) end
+				task.wait(SETTINGS.TIME_BETWEEN_RETRIES_SECONDS)
+				
+				local s, retryRes = ThreadQueue.Enqueue(
+					database._userCache[userId].queue, 
+					`retry_{i}_load_{coroutine.running()}`, 
+					loadUserData, database.DataStore, database.MemStoreSortedMap, database._schema, userId, database.WaitForSessionOnLoad,
+					database.JobId, database.PlaceId
+				)
+
+				if s then
+					-- add player to the server cache
+					database._userCache[userId].data = retryRes
+					database._userCache[userId].dataLoaded = true
+
+					if database.DebugMode then print("Data loaded successfully:", retryRes) end
+
+					return retryRes
+				end
+			end
+		end
+		
+		-- run code below if data fails to load because of session lock or if
+		-- data fails to load even after exhausting the retries
+
+		local player = Players:GetPlayerByUserId(userId)
+		player:Kick("Session locked by another server. Your data is safe. Please wait a moment before joining again.")
+		ThreadQueue.Destroy(database._userCache[userId].queue) 
+		database._userCache[userId] = nil
 		return nil
-	end
-	
-	
-	local success, res = ThreadQueue.Enqueue(
-		database._userCache[userId].queue, 
-		`load_{coroutine.running()}`, 
-		loadUserData, database.DataStore, database.MemStoreSortedMap, database._schema, userId, database.WaitForSessionOnLoad,
-		database.JobId, database.PlaceId
-	)
-	
-	if success then
-		-- add player to the server cache
-		database._userCache[userId].data = res
-		database._userCache[userId].dataLoaded = true
-
-		if database.DebugMode then print("Data loaded successfully:", res) end
-
-		return res
-	end
-
-	if res == WAIT_FOR_SESSION_ERR_MSG then
-		if database.DebugMode then print("retrying to load data...") end
-		-- keep retrying to load the data
-		for i = 1, SETTINGS.WaitForSession_MAX_RETRIES do
-			if (database.DebugMode and not database.ThreadQueueDebugMode) then print("retry_load_"..i) end
-			task.wait(SETTINGS.TIME_BETWEEN_RETRIES_SECONDS)
-			
-			local s, retryRes = ThreadQueue.Enqueue(
-				database._userCache[userId].queue, 
-				`retry_{i}_load_{coroutine.running()}`, 
-				loadUserData, database.DataStore, database.MemStoreSortedMap, database._schema, userId, database.WaitForSessionOnLoad,
-				database.JobId, database.PlaceId
-			)
-
-			if s then
-				-- add player to the server cache
-				database._userCache[userId].data = retryRes
-				database._userCache[userId].dataLoaded = true
-
-				if database.DebugMode then print("Data loaded successfully:", retryRes) end
-
-				return retryRes
-			end
-		end
-	end
-	
-	-- run code below if data fails to load because of session lock or if
-	-- data fails to load even after exhausting the retries
-
-	local player = Players:GetPlayerByUserId(userId)
-	player:Kick("Session locked by another server. Your data is safe. Please wait a moment before joining again.")
-	ThreadQueue.Destroy(database._userCache[userId].queue) 
-	database._userCache[userId] = nil
-	return nil
+	end)
 end
 
 
@@ -522,25 +553,27 @@ end
 	DO NOT use this function to save a player's data when they leave.
 ]]
 function Rodata.SaveUserData(database: UserDatabase, userId: string): boolean
-	if type(database) ~= "table" then error("database must be a UserDatabase.") end
-	if database._userCache[userId] == nil then warn(`User_{userId} has no data to access to save.`) return false end
-	if not database._userCache[userId].dataLoaded then warn(`User_{userId} has not been loaded yet to save.`) return false end
-	
-	local success, res = ThreadQueue.Enqueue(
-		database._userCache[userId].queue, 
-		`save_{coroutine.running()}`, 
-		saveUserData, database.DataStore, database.MemStoreSortedMap, database._schema, database._userCache[userId].data, userId,
-		database.JobId, database.PlaceId
-	)
-	
-	if not success then
-		warn(res)
-		return false
-	end
-	
-	if database.DebugMode then print("Data saved successfully:", res) end
-	
-	return true
+	return retryCall(5, 1, "save", database.DebugMode, function(): boolean
+		if type(database) ~= "table" then error("database must be a UserDatabase.") end
+		if database._userCache[userId] == nil then warn(`User_{userId} has no data to access to save.`) return false end
+		if not database._userCache[userId].dataLoaded then warn(`User_{userId} has not been loaded yet to save.`) return false end
+
+		local success, res = ThreadQueue.Enqueue(
+			database._userCache[userId].queue, 
+			`save_{coroutine.running()}`, 
+			saveUserData, database.DataStore, database.MemStoreSortedMap, database._schema, database._userCache[userId].data, userId,
+			database.JobId, database.PlaceId
+		)
+
+		if not success then
+			warn(res)
+			return false
+		end
+
+		if database.DebugMode then print("Data saved successfully:", res) end
+
+		return true
+	end) or false
 end
 
 
@@ -553,40 +586,42 @@ end
 	This function should be called when the player leaves the server or during shutdown
 ]]
 function Rodata.SaveAndReleaseUserData(database: UserDatabase, userId: string): boolean
-	if type(database) ~= "table" then error("database must be a UserDatabase.") end
-	if database._userCache[userId] == nil then warn(`User_{userId} has no data to access to save and release.`) return false end
-	if not database._userCache[userId].dataLoaded then warn(`User_{userId} has not been loaded to save and release.`) return false end
-	
-	local success, res = ThreadQueue.Enqueue(
-		database._userCache[userId].queue, 
-		`save_release_{coroutine.running()}`, 
-		releaseSessionLock, database.DataStore, database.MemStoreSortedMap, database._schema, database._userCache[userId].data, userId,
-		database.JobId, database.PlaceId
-	)
-	
-	if not success then
-		warn(res)
-		return false
-	end
-	
-	--[[ Special Case:
-		If a player rejoins the same server quickly and loads data while 
-		the new data is still saving from the old session, the load request will
-		be added to the queue. To prepare for when the request gets dequeued,
-		we must reset the cache data for the new loaded data
-	]]
-	if not ThreadQueue.IsEmpty(database._userCache[userId].queue) then
-		database._userCache[userId].dataLoaded = false
-		database._userCache[userId].data = nil
-	else
-		ThreadQueue.Destroy(database._userCache[userId].queue) 
-		database._userCache[userId] = nil
-	end
-	
-	
-	if database.DebugMode then print("Data saved and session lock released successfully:", res) end
+	return retryCall(5, 1, "save_and_release", database.DebugMode, function(): boolean
+		if type(database) ~= "table" then error("database must be a UserDatabase.") end
+		if database._userCache[userId] == nil then warn(`User_{userId} has no data to access to save and release.`) return false end
+		if not database._userCache[userId].dataLoaded then warn(`User_{userId} has not been loaded to save and release.`) return false end
 
-	return true
+		local success, res = ThreadQueue.Enqueue(
+			database._userCache[userId].queue, 
+			`save_release_{coroutine.running()}`, 
+			releaseSessionLock, database.DataStore, database.MemStoreSortedMap, database._schema, database._userCache[userId].data, userId,
+			database.JobId, database.PlaceId
+		)
+
+		if not success then
+			warn(res)
+			return false
+		end
+
+		--[[ Special Case:
+			If a player rejoins the same server quickly and loads data while 
+			the new data is still saving from the old session, the load request will
+			be added to the queue. To prepare for when the request gets dequeued,
+			we must reset the cache data for the new loaded data
+		]]
+		if not ThreadQueue.IsEmpty(database._userCache[userId].queue) then
+			database._userCache[userId].dataLoaded = false
+			database._userCache[userId].data = nil
+		else
+			ThreadQueue.Destroy(database._userCache[userId].queue) 
+			database._userCache[userId] = nil
+		end
+
+
+		if database.DebugMode then print("Data saved and session lock released successfully:", res) end
+
+		return true
+	end) or false
 end
 
 
@@ -596,18 +631,20 @@ end
 	Returns true if successful or false if an error occured.
 ]]
 function Rodata.SetOrderedData(database: OrderedDatabase, key: string, value: number): boolean
-	if type(database) ~= "table" then error("database must be an OrderedDatabase.") end
-	if type(value) ~= "number" then error("Value must be a number.") end
-	
-	local orderedDataStore = database.OrderedDataStore
-	local success, res = pcall(orderedDataStore.SetAsync, orderedDataStore, key, value)
-	
-	if not success then
-		warn(res)
-		return false
-	end
-	
-	return true
+	return retryCall(5, 1, "ordered_set", database.DebugMode, function(): boolean
+		if type(database) ~= "table" then error("database must be an OrderedDatabase.") end
+		if type(value) ~= "number" then error("Value must be a number.") end
+
+		local orderedDataStore = database.OrderedDataStore
+		local success, res = pcall(orderedDataStore.SetAsync, orderedDataStore, key, value)
+
+		if not success then
+			warn(res)
+			return false
+		end
+
+		return true
+	end) or false
 end
 
 
@@ -626,12 +663,21 @@ function Rodata.IterateOrderedData(
 )
 	if type(database) ~= "table" then error("database must be an OrderedDatabase.") end
 	
-	local success, res = pcall(database.OrderedDataStore.GetSortedAsync, database.OrderedDataStore,
-		ascendingOrder, entriesPerPage or 50, minVal, maxVal 
-	)
+	local res = retryCall(5, 1, "ordered_iterate", database.DebugMode, function(): Pages?
+		local success, r = pcall(database.OrderedDataStore.GetSortedAsync, database.OrderedDataStore,
+			ascendingOrder, entriesPerPage or 50, minVal, maxVal 
+		)
+
+		if not success then
+			warn(r)
+			return nil
+		end
+		
+		return r::Pages
+	end) or nil
 	
-	if not success then
-		warn(res)
+	if res == nil then 
+		if database.DebugMode then warn("Max attempts exhausted for IterateOrderedData(); Callback cancelled.") end
 		return
 	end
 	
@@ -656,18 +702,19 @@ end
 	Returns true if successful or false if an error occured.
 ]]
 function Rodata.RemoveOrderedData(database: OrderedDatabase, key: string): boolean
-	if type(database) ~= "table" then error("database must be an OrderedDatabase.") end
-	
-	local orderedDataStore = database.OrderedDataStore
-	local success, res = pcall(orderedDataStore.RemoveAsync, orderedDataStore, key)
-	
-	if not success then
-		warn(res)
-		return false
-	end
-	
-	
-	return true
+	return retryCall(5, 1, "ordered_remove", database.DebugMode, function(): boolean
+		if type(database) ~= "table" then error("database must be an OrderedDatabase.") end
+
+		local orderedDataStore = database.OrderedDataStore
+		local success, res = pcall(orderedDataStore.RemoveAsync, orderedDataStore, key)
+
+		if not success then
+			warn(res)
+			return false
+		end
+
+		return true
+	end) or false
 end
 
 
@@ -690,6 +737,8 @@ end
 	the new data.
 
 	Use this function if you want to just set data forcefully without caring about the player's current data.
+	
+	-------!![ Not wrapped in a retry call ]!!-------
 ]]
 function Rodata.GlobalSetUserData(
 	databaseRef: string | UserDatabase, 
@@ -765,6 +814,8 @@ end
     One use case for this function is that you can use this function to revert a player's data by 
     seeing all the past versions of their data and use GlobalSetUserData() to pass in the
     old data version and set the player's current data to it.
+    
+    -------!![ Not wrapped in a retry call ]!!-------
 ]]
 function Rodata.ListVersionsAsync(
 	databaseName: string, 
@@ -813,6 +864,8 @@ end
 	using GetAsync() or returns nil if no data can be found for the key.
 	
 	This function can be called globally, similar to GlobalSetUserData().
+	
+	-------!![ Not wrapped in a retry call ]!!-------
 ]]
 function Rodata.GetUnboundedData(databaseRef: string | UnboundedDatabase, key: string): any
 	if type(databaseRef) ~= "string" and type(databaseRef) ~= "table" then 
@@ -843,6 +896,8 @@ end
 	Returns true if successful or false if an error occurred.
 	
 	This function can be called globally, similar to GlobalSetUserData().
+	
+	-------!![ Not wrapped in a retry call ]!!-------
 ]]
 function Rodata.SetUnboundedData(databaseRef: string | UnboundedDatabase, key: string, data: any): boolean
 	if type(databaseRef) ~= "string" and type(databaseRef) ~= "table" then 
@@ -857,6 +912,38 @@ function Rodata.SetUnboundedData(databaseRef: string | UnboundedDatabase, key: s
 	end
 
 	local success, res = pcall(datastore.SetAsync, datastore, key, data)
+
+	if not success then
+		warn(res)
+		return false
+	end
+
+	return true
+end
+
+
+--[[ UNBOUNDED:
+	Removes the specified key value from an unbounded database using RemoveAsync(). 
+	
+	Returns true if successful or false if an error occurred.
+	
+	This function can be called globally, similar to GlobalSetUserData().
+	
+	-------!![ Not wrapped in a retry call ]!!-------
+]]
+function Rodata.RemoveUnboundedData(databaseRef: string | UnboundedDatabase, key: string): boolean
+	if type(databaseRef) ~= "string" and type(databaseRef) ~= "table" then 
+		error("databaseRef must be the name of the UnboundedDatabase or an UnboundedDatabase.")
+	end
+
+	local datastore 
+	if type(databaseRef) == "string" then
+		datastore = DataStoreService:GetDataStore(databaseRef)
+	elseif type(databaseRef) == "table" then
+		datastore = databaseRef.DataStore
+	end
+
+	local success, res = pcall(datastore.RemoveAsync, datastore, key)
 
 	if not success then
 		warn(res)
@@ -896,6 +983,8 @@ end
 	
 	If this function is called when the player is not ingame, then that's simpler. If they join
 	the next time, the default schema you provided will be loaded in; new fresh data.
+	
+	-------!![ Not wrapped in a retry call ]!!-------
 ]]
 function Rodata.RemoveUserData(
 	databaseRef: string | UserDatabase, 
@@ -965,6 +1054,8 @@ end
 	
 	This function is kind of buggy, though...use at your own risk.
 	
+	-------!![ Not wrapped in a retry call ]!!-------
+	
 	*Don't mind the name of the function, heh*
 ]]
 function Rodata.ObliterateUserData(databaseName: string, userId: string)
@@ -993,6 +1084,9 @@ function Rodata.ObliterateUserData(databaseName: string, userId: string)
 	
 	warn(`Number of versions removed: {removedCount}, time taken: {timeTaken}s.`)
 end
+
+
+
 
 
 
