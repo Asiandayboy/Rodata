@@ -27,9 +27,17 @@ from Rodata.lua into a module script (name it "Rodata" if you want), and make su
 
 # Documentation
 ```lua
-Rodata.CreateNewUserDatabase()
+Rodata.CreateNewUserDatabase(
+  databaseName: string,
+  memoryStoreName: string,
+  schema: { [string]: any },
+  waitForSessionOnLoad: boolean?,
+  debugMode: boolean?,
+  threadQueueDebugMode: boolean?,
+  jobId: string?,
+  placeId: string?
+): UserDatabase
 ```
-
 ```lua
 Rodata.CreateNewOrderedDatabase()
 ```
@@ -41,6 +49,9 @@ Rodata.GetDatabase()
 ```
 ```lua
 Rodata.GetCachedUserData()
+```
+```lua
+Rodata.GetUserMetadata()
 ```
 ```lua
 Rodata.LoadUserData()
