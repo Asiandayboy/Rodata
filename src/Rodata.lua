@@ -1,7 +1,7 @@
 --!strict
-local Rodata = {}
-
 --[=[
+	Made by robloxdestroyer1035 (Roblox) a.k.a Asiandayboy (GitHub)
+
 	Features:
 	- Session locking: only one server at a time can access a player's data, preventing item duplication and data overwrites
 	- Simple: Very easy to use and setup for everyone
@@ -17,7 +17,13 @@ local Rodata = {}
 
 ]=]
 
-
+local Rodata = { 
+	--[[
+		This variable is really only used to bypass certain checks so that errors don't pop up when I was testing this module.
+		It literally only ignores one error check, which is the databaseName check in CreateUserDatabase()
+	]]
+	SAFE_MODE = true
+}
 
 local DataStoreService = game:GetService("DataStoreService")
 local MemoryStoreService = game:GetService("MemoryStoreService")
@@ -288,7 +294,7 @@ function Rodata.CreateNewUserDatabase(
 	if databaseName == nil then error("databaseName required.") end
 	if memoryStoreName == nil then error("memoryStoreName required.") end
 	
-	if GLOBAL_DATABASE_REFERENCES[databaseName] then
+	if GLOBAL_DATABASE_REFERENCES[databaseName] and Rodata.SAFE_MODE then
 		error(`A database with the name "{databaseName}" already exists in the cache. Use a different name.`)
 	end
 	
@@ -1102,11 +1108,6 @@ function Rodata.ObliterateUserData(databaseName: string, userId: string)
 	
 	warn(`Number of versions removed: {removedCount}, time taken: {timeTaken}s.`)
 end
-
-
-
-
-
 
 
 return Rodata
