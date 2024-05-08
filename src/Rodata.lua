@@ -3,7 +3,7 @@ local Rodata = {}
 
 --[=[
 	Features:
-	- Session locking using MSS: only one server at a time can access a player's data, preventing item duplication and data overwrites
+	- Session locking: only one server at a time can access a player's data, preventing item duplication and data overwrites
 	- Simple: Very easy to use and setup for everyone
 	- Threadsafe: All normal datastore operations are queued for processing so that each operation runs one at time time, avoiding race conditions
 	- Direct indexing: Access the player's cached data directly with the dot . syntax 
@@ -11,9 +11,9 @@ local Rodata = {}
 	- Easy data migration: Create a Rodata database with your current datastore's name to start using Rodata
 	- OrderedDataStores: You can create leaderboards with this
 	- Change data globally: Set a user's data from any server anytime. They don't even have to be in game.
-
+	- User metadata cache: An additional table used to store in-memory variables related to the player's data
 	
-	TODO: retry mechanism if failure on saving
+	TODO: Handle possible dead sessions
 
 ]=]
 
@@ -35,6 +35,7 @@ type UserCache = {
 	dataLoaded: boolean,
 	queue: ThreadQueue.ThreadQueue,
 	data: Schema | nil,
+	metadata: Schema
 }
 
 export type DataVersion = {
@@ -77,7 +78,7 @@ local WAIT_FOR_SESSION_ERR_MSG = "WaitForSession"
 local SETTINGS = {
 	WaitForSession_MAX_RETRIES = 10,
 	TIME_BETWEEN_RETRIES_SECONDS = 4,
-	MSS_SESION_LOCK_MAX_RETIES = 10,
+	MSS_SESSION_LOCK_MAX_RETRIES = 10,
 }
 
 
@@ -96,7 +97,7 @@ local function isNotSessionLocked(sessionLock: SessionLock, JOB_ID: string, PLAC
 end
 
 local function getSessionLockedMSS(map: MemoryStoreSortedMap, userId: string): (boolean, SessionLock)
-	for i = 1, SETTINGS.MSS_SESION_LOCK_MAX_RETIES do
+	for i = 1, SETTINGS.MSS_SESSION_LOCK_MAX_RETRIES do
 		local success, res: SessionLock = pcall(map.GetAsync, map, userId)
 		
 		if success then
@@ -112,7 +113,7 @@ local function setSessionLockMSS(
 	map: MemoryStoreSortedMap, 
 	userId: string, sessionLock: SessionLock, expiration_s: number
 ): (boolean, SessionLock)
-	for i = 1, SETTINGS.MSS_SESION_LOCK_MAX_RETIES do
+	for i = 1, SETTINGS.MSS_SESSION_LOCK_MAX_RETRIES do
 		local success
 		if sessionLock == nil then
 			success = pcall(map.RemoveAsync, map, userId)
@@ -354,10 +355,7 @@ end
 	----------------------------------[ !!IMPORTANT!! ]---------------------------------
 	----------------[ MAKE SURE TO USE A UNIQUE NAME FOR YOUR DATABASE ]----------------
 ]]
-function Rodata.CreateNewUnboundedDatabase(
-	databaseName: string, 
-	debugMode: boolean?
-): UnboundedDatabase
+function Rodata.CreateNewUnboundedDatabase(databaseName: string, debugMode: boolean?): UnboundedDatabase
 	if databaseName == nil then error("databaseName required.") end
 	
 	if GLOBAL_DATABASE_REFERENCES[databaseName] then
@@ -373,7 +371,6 @@ function Rodata.CreateNewUnboundedDatabase(
 	
 	return self
 end
-
 
 
 --[[ USER, ORDERED, UNBOUNDED:
@@ -453,7 +450,7 @@ function Rodata.LoadUserData(database: UserDatabase, userId: string): Schema?
 						dataLoaded = false,
 						queue = q,
 						data = nil,
-						isSaving = false
+						metadata = {}
 					}
 				end
 				return true
@@ -525,12 +522,12 @@ end
 	Retrieves the player's data held in server memory. This function does
 	not yield.
 	
-	Throws and error if the player's data has not been loaded or is not in the cache.
+	Throws an error if the player's data has not been loaded or is not in the cache.
 	
 	Use this function to retrieve a player's data after their data has been loaded
 	with Rodata.LoadUserData()
 ]]
-function Rodata.GetCachedUserData(database: UserDatabase, userId: string)
+function Rodata.GetCachedUserData(database: UserDatabase, userId: string): Schema?
 	if type(database) ~= "table" then error("database must be a UserDatabase.") end
 	
 	local cache = database._userCache[userId]
@@ -542,7 +539,27 @@ end
 
 
 --[[ USER:
-	Saves the player's cached data while maintaining the session lock. This function 
+	Returns the user's metadata cache, which is an additioanl table to store in-memory
+	variables related to a player's data, which means it does not get saved
+	
+	Throws an error if the player's data has not been loaded or is not in the cache
+	
+	One use case is to cache results from async calls, like MarketplaceService:UserOwnsGamePassAsync(),
+	that you only need to call once
+]]
+function Rodata.GetUserMetadata(database: UserDatabase, userId: string): Schema
+	if type(database) ~= "table" then error("database must be a UserDatabase.") end
+
+	local cache = database._userCache[userId]
+	if cache == nil then error(`User_{userId}'s cache is nil; User_{userId} has no data to access.`) end
+	if not cache.dataLoaded then error(`Cannot retrieve User_{userId}'s metadata because their data is not loaded.`) end
+
+	return database._userCache[userId].metadata
+end
+
+
+--[[ USER:
+	Saves the player's cached data in UserCache.data while maintaining the session lock. This function 
 	yields the current thread until it gets dequeued to execute.
 
 	Returns true if the operation succeeded; returns false if an error occurred.
@@ -578,7 +595,7 @@ end
 
 
 --[[ USER:
-	Saves the player's data and releases the session lock. This function yields the
+	Saves the player's data in UserCache.data and releases the session lock. This function yields the
 	current thread until it gets dequeued to execute.
 	
 	Returns true if the operation succeeded; returns false if an error occurred. 
@@ -729,7 +746,7 @@ end
 	
 	Returns true if successful or false if an error occured.
 	
-	This function can be used in the command line.
+	This function can be used in the command line by providing the name of the database as databaseRef.
 	
 	If called in the same server as the player, this function will get queued, update the server's cache,
 	set dataLoaded to true, and accept an optional callback as the last argument with the new data passed in
@@ -754,7 +771,8 @@ function Rodata.GlobalSetUserData(
 		--[[
 			If this function is called when the player is not in the same server or in game, the newData 
 			will be tagged with a <currDataGloballySet = true> metadata, so that the next time a Rodata 
-			save occurs, the data set by this function will take precendence, saving this data instead.
+			load or save occurs, the data set by this function will take precendence, saving or loading 
+			this data instead and setting currDataGloballySet back to false.
 		]]
 		return newData, { userId }, { currDataGloballySet = true }
 	end
