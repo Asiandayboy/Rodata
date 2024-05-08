@@ -153,21 +153,7 @@ This function should be called when the player leaves the server or during shutd
 ```lua
 Rodata.SaveAndReleaseUserData(database: UserDatabase, userId: string): boolean
 ```
-### Example
-```lua
-Players.PlayerRemoving:Connect(function(player)
-	Rodata.SaveAndReleaseUserData(udb, player.UserId)
-end)
 
-
-game:BindToClose(function()
-	for _, player in ipairs(Players:GetPlayers()) do
-		warn("BIND TO CLOSE")
-		Rodata.SaveAndReleaseUserData(udb, player.UserId)
-	end
-	if RunService:IsStudio() then task.wait(1) end
-end)
-```
 ## Rodata.SetOrderedData()
 Sets the value to the key by calling OrderedDataStore:SetAsync().
 
