@@ -11,7 +11,7 @@
 	- Simple: Very easy to use and setup 
 	- Change data globally: Set a user's data from any server anytime. They don't even have to be in game.
 	- Typechecking: This module is written in strict lua; Typechecking = good :]
-	- User metadata cache: An additional table is provided so you can store store in-memory variables related to the player's data
+	- User metadata cache: An additional table is provided so you can store in-memory variables related to the player's data
 
 
 	
@@ -1008,7 +1008,7 @@ end
 --[[ USER:
 	This function removes the user's data using RemoveAsync(). 
 	
-	Returns true if successful or false if an error occured.
+	Returns true if successful or false if an error occurred.
 	
 	If this function is called while the player is in the same server,
 	pass in the UserDatabase reference, otherwise pass in the databse name.
@@ -1094,7 +1094,7 @@ end
 
 
 --[[ USER:
-	This function completely erases all data bounded the player in a user
+	This function completely erases all data bounded to the player in a user
 	database, removing every version of their data as well. This function
 	will yield the current thread while executing each datastore operation.
 	It may take a while.
