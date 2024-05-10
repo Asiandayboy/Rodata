@@ -4,23 +4,26 @@
 
 	Features:
 	- Session locking: only one server at a time can access a player's data, preventing item duplication and data overwrites
-	- Simple: Very easy to use and setup for everyone
-	- Threadsafe: All normal datastore operations are queued for processing so that each operation runs one at time time, avoiding race conditions
-	- Direct indexing: Access the player's cached data directly with the dot . syntax 
-	- Typechecking: Typechecking = good :]
-	- Easy data migration: Create a Rodata database with your current datastore's name to start using Rodata
 	- OrderedDataStores: You can create leaderboards with this
+	- Autosave: You have the option to enable autosaving for each individual player
+	- Threadsafe: All normal datastore operations are queued for processing so that each operation runs one at time time, avoiding race conditions
+	- Simple: Very easy to use and setup 
 	- Change data globally: Set a user's data from any server anytime. They don't even have to be in game.
+	- Typechecking: This module is written in strict lua; Typechecking = good :]
+	- Direct indexing: Access the player's cached data directly with the dot . syntax 
 	- User metadata cache: An additional table used to store in-memory variables related to the player's data
-	- Autosave
-	
-	TODO: Handle possible dead sessions
-	Dead sessions can occur if a player gets disconnected and the user's data never releases.
-		- write logic for isNotSessionLocked
-			- set timestamp on sessionlock with every load/save
-			- session is dead if more than 30mins go by.
-			
 
+
+	
+	[Notes about the session locking:
+		The session-locking mechanism is implemented using MemoryStoreService. Because of the way the service works,
+		the session-locking for live servers and in Roblox studio are different. So, if you are in the game
+		in Roblox studio, and in the game on Roblox, then the session locking won't work as expected; both servers will be
+		able to access the user's data because the memory in live Roblox servers is not the same as the memory in Roblox studio. 
+		Hence the name of the service: MEMORYStoreService.
+		
+		I have a script in the test place which tests the session locking, though. It's called testingMemSessionLock.
+	]
 
 ]=]
 
@@ -40,13 +43,12 @@ local Util = require(script.Util)
 local ThreadQueue = require(script.ThreadQueue)
 
 
-type Schema = {[string]: number | string}
+type Schema = { [string]: number | string | Schema }
 type Metadata = { [any]: any }
 
 type SessionLock = { 
 	jobId: string?, 
 	placeId: string?, 
-	--lastLockedTimestamp: number 
 } | nil
 
 type UserCache = {
@@ -74,7 +76,7 @@ export type UserDatabase = {
 	ThreadQueueDebugMode: boolean,
 	JobId: string,
 	PlaceId: string,
-	AutosaveCallbacks: { callback: (player: Player, data: Schema, metadata: Metadata) -> ()? }
+	AutosaveCallbacks: { callback: (userId: number, data: Schema, metadata: Metadata) -> ()? }
 }
 
 export type OrderedDatabase = {
@@ -88,6 +90,7 @@ export type UnboundedDatabase = {
 }
 
 
+
 local CURRENT_RUNNING_JOB_ID = game.JobId
 local CURRENT_RUNNING_PLACE_ID = game.PlaceId
 
@@ -95,10 +98,11 @@ local SESSION_LOCKED_ERR_MSG = "Data is session-locked by another server."
 local WAIT_FOR_SESSION_ERR_MSG = "WaitForSession"
 
 local SETTINGS = {
-	WaitForSession_MAX_RETRIES = 10,
+	WAIT_FOR_SESSSION_MAX_RETRIES = 10,
 	TIME_BETWEEN_RETRIES_SECONDS = 4,
 	MSS_SESSION_LOCK_MAX_RETRIES = 10,
-	AUTOSAVE_INTERVAL_SECONDS = 30
+	AUTOSAVE_INTERVAL_SECONDS = 30,
+	SESSION_LOCK_EXPIRATION_SECONDS = 3600 * 1 -- 2 hours [Note: 3600 seconds = 1 hour] 
 }
 
 
@@ -197,7 +201,7 @@ local function loadUserData(
 	
 	local res: Schema = datastore:UpdateAsync(tostring(userId), fetchData)
 	
-	local _, s = setSessionLockMSS(map, userId, { jobId = JOB_ID, placeId = PLACE_ID }, 86400) -- set expiration to 24hrs
+	local _, s = setSessionLockMSS(map, userId, { jobId = JOB_ID, placeId = PLACE_ID }, SETTINGS.SESSION_LOCK_EXPIRATION_SECONDS) -- set expiration to 24hrs
 	
 
 	return res
@@ -230,7 +234,7 @@ local function saveUserData(
 	
 	local res: Schema = datastore:UpdateAsync(tostring(userId), saveData)
 	
-	local _, s = setSessionLockMSS(map, userId, { jobId = JOB_ID, placeId = PLACE_ID }, 86400) -- set expiration to 24hrs
+	local _, s = setSessionLockMSS(map, userId, { jobId = JOB_ID, placeId = PLACE_ID }, SETTINGS.SESSION_LOCK_EXPIRATION_SECONDS) -- set expiration to 24hrs
 	
 
 	return res
@@ -263,7 +267,7 @@ local function releaseSessionLock(
 
 	local res: Schema = datastore:UpdateAsync(tostring(userId), release)
 	
-	local _, s = setSessionLockMSS(map, userId, nil, 1) -- release session lock
+	local _, s = setSessionLockMSS(map, userId, nil, 1) -- release session lock; expire the lock after 1 second
 
 
 	return res
@@ -301,7 +305,7 @@ end
 function Rodata.CreateNewUserDatabase(
 	databaseName: string, 
 	memoryStoreName: string,
-	schema: {[string]: any}, 
+	schema: Schema, 
 	waitForSessionOnLoad: boolean?,
 	debugMode: boolean?, 
 	threadQueueDebugMode: boolean?,
@@ -508,7 +512,7 @@ function Rodata.LoadUserData(database: UserDatabase, userId: number): Schema?
 		if res == WAIT_FOR_SESSION_ERR_MSG then
 			if database.DebugMode then print("[Rodata]: retrying to load data...") end
 			-- keep retrying to load the data
-			for i = 1, SETTINGS.WaitForSession_MAX_RETRIES do
+			for i = 1, SETTINGS.WAIT_FOR_SESSSION_MAX_RETRIES do
 				if (database.DebugMode and not database.ThreadQueueDebugMode) then print("retry_load_"..i) end
 				task.wait(SETTINGS.TIME_BETWEEN_RETRIES_SECONDS)
 				
@@ -584,8 +588,8 @@ end
 
 
 --[[ USER:
-	Saves the player's cached data in UserCache.data while maintaining the session lock. This function 
-	yields the current thread until it gets dequeued to execute.
+	Saves the player's cached data in UserCache.data and refreshes the session lock expiration. This function 
+	yields the current thread until it gets dequeued from the player's queue to execute.
 
 	Returns true if the operation succeeded; returns false if an error occurred.
 	
@@ -1137,34 +1141,30 @@ end
 --[[ USER:
 	Starts the auto save loop for the player's user data in a separate coroutine with task.defer
 ]]
-function Rodata.StartAutoSaveUserDataLoop(database: UserDatabase, player: Player)
-	task.defer(function()
-		local userId = player.UserId
-		local last = os.clock()
+function Rodata.StartAutoSaveUserDataLoop(database: UserDatabase)
+	if database.DebugMode then print(`[Rodata]: autosave loop started.`) end
+	local timeElapsed = 0
+	local isSaving = false
+	RunService.Heartbeat:Connect(function(dt)
+		timeElapsed += dt
 		
-		if database.DebugMode then
-			warn(`[Rodata]: autosave loop started for user_{userId}.`)
-		end
-		while Players:FindFirstChild(player.Name) do
-			local dif = os.clock() - last
-			if dif >= SETTINGS.AUTOSAVE_INTERVAL_SECONDS then
-				if database.DebugMode then
-					warn(`[Rodata]: autosaving for user_{userId}...`)
-				end
-				Rodata.SaveUserData(database, userId)
-				
-				local data = Rodata.GetCachedUserData(database, userId)
-				local metadata = Rodata.GetUserMetadata(database, userId)
-				for i, callback in pairs(database.AutosaveCallbacks) do
-					callback(player, data, metadata)
-				end
-				
-				last = os.clock()
+		if timeElapsed >= SETTINGS.AUTOSAVE_INTERVAL_SECONDS and not isSaving then
+			isSaving = true
+			
+			for userId: number, userCache: UserCache in pairs(database._userCache) do
+				task.spawn(function()
+					if database.DebugMode then print(`[Rodata]: autosaving for user_{userId}...`) end
+					Rodata.SaveUserData(database, userId)
+				end)
+				task.spawn(function()
+					for i, callback in pairs(database.AutosaveCallbacks) do
+						callback(userId, userCache.data, userCache.metadata)
+					end
+				end)
 			end
-			task.wait()
-		end
-		if database.DebugMode then
-			warn(`[Rodata]: autosave loop for user_{userId} finished.`)
+			
+			timeElapsed = 0
+			isSaving = false
 		end
 	end)
 end
