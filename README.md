@@ -9,12 +9,15 @@ With Rodata, you can create a `database` to save your data. There are three diff
 
 
 ### Features
-- **Session-locking**: In a `UserDatabase`, only one server at a time can access a player's data, preventing item duplication and data overwrites.
-- **Simple**: Rodata is very easy to use for anyone. 
-- **Threadsafe**: In a `UserDatabase`, each datastore request is added to a queue, which helps solve concurrency problems, like a player rejoining the same server quickly when their data hasn't finished saving from leaving the server the first time.
-- **Change user data globally**: Rodata provides a function that allows you to change a user's data from anywhere anytime. This is handy if you want to revert a player's data or manually set it to something else.
-- **OrderedDataStores**: With Rodata, you can use an `OrderedDatabase` to help you create leaderboards.
-- **Direct indexing**: In a `UserDatabase`, the player's data is cached in a table, which allows you to use the dot . syntax to easily access the player's data.
+- **Session locking**: only one server at a time can access a player's data, preventing item duplication and data overwrites
+- **OrderedDataStores**: OrderedDatabases allow you to create leaderboards 
+- **UnboundedDataStores**: UnboundedDatabases allow you to save global game data, such as game codes or guilds created by players
+- **Autosaving**: You have the option to enable autosaving 
+- **Simple**: Very easy to use and setup 
+- **Change data globally**: Set a user's data from any server anytime. They don't even have to be in game.
+- **Typechecking**: This module is written in strict lua; Typechecking = good :]
+- **User metadata cache**: An additional table is provided so you can store in-memory variables related to the player's data
+- **Threadsafe**: All normal datastore operations are queued for processing so that each operation runs one at time time, avoiding race conditions
 
 
 
