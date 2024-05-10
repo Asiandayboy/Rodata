@@ -52,20 +52,20 @@ Rodata.StartAutoSaveUserDataLoop(udb)
 
 
 Players.PlayerAdded:Connect(function(player)
-	local data = Rodata.LoadUserData(udb, player.UserId)
-	if not data then
-		warn("no data for:", player.Name)
-		return
-	end
-	
-	local leaderstats = Instance.new("Folder")
-	leaderstats.Name = "leaderstats"
-	leaderstats.Parent = player
+local data = Rodata.LoadUserData(udb, player.UserId)
+if not data then
+	warn("no data for:", player.Name)
+	return
+end
 
-	local score = Instance.new("IntValue")
-	score.Name = "Score"
-	score.Value = data.score
-	score.Parent = leaderstats
+local leaderstats = Instance.new("Folder")
+leaderstats.Name = "leaderstats"
+leaderstats.Parent = player
+
+local score = Instance.new("IntValue")
+score.Name = "Score"
+score.Value = data.score
+    score.Parent = leaderstats
 end)
 
 
