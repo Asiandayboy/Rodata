@@ -262,7 +262,7 @@ Rodata.RemoveUnboundedData(databaseRef: string | UnboundedDatabase, key: string)
 ## Rodata.RemoveUserData()
 This function removes the user's data using RemoveAsync(). 
 
-Returns true if successful or false if an error occured.
+Returns true if successful or false if an error occurred.
 
 If this function is called while the player is in the same server,
 pass in the UserDatabase reference, otherwise pass in the databse name.
@@ -292,7 +292,7 @@ the next time, the default schema you provided will be loaded in; new fresh data
 Rodata.RemoveUserData(databaseRef: string | UserDatabase, memoryStoreRef: string?, userId: string): boolean
 ```
 ## Rodata.ObliterateUserData()
-This function completely erases all data bounded the player in a user
+This function completely erases all data bounded to the player in a user
 database, removing every version of their data as well. This function
 will yield the current thread while executing each datastore operation.
 It may take a while.
@@ -300,8 +300,9 @@ It may take a while.
 Rodata.ObliterateUserData(databaseName: string, userId: string)
 ```
 ## Rodata.StartAutoSaveUserDataLoop()
+Starts the auto-save loop for the specified `UserDatabase`
 ```lua
-Rodata.StartAutoSaveUserDataLoop(database: UserDatabase, player: Player)
+Rodata.StartAutoSaveUserDataLoop(database: UserDatabase)
 ```
 
 
