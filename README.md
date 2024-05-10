@@ -25,6 +25,67 @@ With Rodata, you can create a `database` to save your data. There are three diff
 Go into the src folder, and add the code from the files in the children folder, paste them into their own module scripts using the same file name (minus the .lua part). Then copy the code
 from Rodata.lua into a module script named `Rodata`, and make sure to add those two child module scripts under the Rodata  module script.  
 
+# Example
+*This is taken from the test place*
+```lua
+local SSS = game:GetService("ServerScriptService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local Rodata = require(SSS.Rodata)
+
+
+local udb = Rodata.CreateNewUserDatabase("beta_score_test.1", "beta_score_test.1map", {
+	score = 0,
+}, false, true, false)
+
+
+udb.AutosaveCallbacks = {
+	function(userId, data, metadata)
+		local player = Players:GetPlayerByUserId(userId)
+		local odb = Rodata.GetDatabase("GAME8_o1")
+		Rodata.SetOrderedData(odb, player.Name, data.score)
+	end,
+}
+
+Rodata.StartAutoSaveUserDataLoop(udb)
+
+
+Players.PlayerAdded:Connect(function(player)
+	local data = Rodata.LoadUserData(udb, player.UserId)
+	if not data then
+		warn("no data for:", player.Name)
+		return
+	end
+	
+	local leaderstats = Instance.new("Folder")
+	leaderstats.Name = "leaderstats"
+	leaderstats.Parent = player
+
+	local score = Instance.new("IntValue")
+	score.Name = "Score"
+	score.Value = data.score
+	score.Parent = leaderstats
+end)
+
+
+Players.PlayerRemoving:Connect(function(player)	
+	Rodata.SaveAndReleaseUserData(udb, player.UserId)
+end)
+
+
+game:BindToClose(function()
+	for _, player in ipairs(Players:GetPlayers()) do
+		warn("BIND TO CLOSE")
+		Rodata.SaveAndReleaseUserData(udb, player.UserId)
+	end
+	if RunService:IsStudio() then task.wait(1) end -- give studio enough time to allow the data to save instead of shutting down right away
+end)
+
+
+
+
+```
 
 
 # Documentation
