@@ -38,6 +38,12 @@ local udb = Rodata.CreateNewUserDatabase("beta_score_test.1", "beta_score_test.1
     score = 0,
 }, false, true, false)
 
+udb.AutosaveCallbacks = {
+    function(userId, data, metadata)
+        print(`autosaved for user_{userId}.`)
+    end,
+}
+
 Rodata.StartAutoSaveUserDataLoop(udb)
 
 
@@ -81,14 +87,14 @@ end)
 ## Rodata.CreateNewUserDatabase()
 ```lua
 Rodata.CreateNewUserDatabase(
-  databaseName: string,
-  memoryStoreName: string,
-  schema: { [string]: any },
-  waitForSessionOnLoad: boolean?,
-  debugMode: boolean?,
-  threadQueueDebugMode: boolean?,
-  jobId: string?,
-  placeId: string?
+  databaseName: string, 		-- A unique name to identify the database
+  memoryStoreName: string, 		-- A unique name to identify the memory store sorted map; used for session-locking
+  schema: { [string]: any }, 		-- the structure of your player data (your values must be numbers or strings or a table of them)
+  waitForSessionOnLoad: boolean?, 	-- if true, a server waiting for the session lock will attempt to wait for the session lock to release before loading data, else the server will just kick the player with a message
+  debugMode: boolean?, 			-- enable print statements to help with debugging
+  threadQueueDebugMode: boolean?, 	-- enable print statements to show the structure of the queue for each player
+  jobId: string?, 			-- you can just ignore this
+  placeId: string? 			-- you can just ignore this
 ): UserDatabase
 ```
 Creates and returns a new user database with a normal datastore with the provided schema, which is your data template.
