@@ -52,7 +52,7 @@ Rodata.StartAutoSaveUserDataLoop(udb)
 
 
 Players.PlayerAdded:Connect(function(player)
-local data = Rodata.LoadUserData(udb, player.UserId)
+    local data = Rodata.LoadUserData(udb, player.UserId)
     if not data then
         warn("no data for:", player.Name)
         return
