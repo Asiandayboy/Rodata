@@ -26,7 +26,7 @@ Go into the src folder, and add the code from the files in the children folder, 
 from Rodata.lua into a module script named `Rodata`, and make sure to add those two child module scripts under the Rodata  module script.  
 
 # Example
-*This is taken from the test place*
+
 ```lua
 local SSS = game:GetService("ServerScriptService")
 local Players = game:GetService("Players")
