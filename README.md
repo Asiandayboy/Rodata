@@ -36,16 +36,16 @@ local Rodata = require(SSS.Rodata)
 
 
 local udb = Rodata.CreateNewUserDatabase("beta_score_test.1", "beta_score_test.1map", {
-	score = 0,
+    score = 0,
 }, false, true, false)
 
 
 udb.AutosaveCallbacks = {
-	function(userId, data, metadata)
-		local player = Players:GetPlayerByUserId(userId)
-		local odb = Rodata.GetDatabase("GAME8_o1")
-		Rodata.SetOrderedData(odb, player.Name, data.score)
-	end,
+    function(userId, data, metadata)
+    local player = Players:GetPlayerByUserId(userId)
+    local odb = Rodata.GetDatabase("GAME8_o1")
+    Rodata.SetOrderedData(odb, player.Name, data.score)
+    end,
 }
 
 Rodata.StartAutoSaveUserDataLoop(udb)
@@ -53,24 +53,24 @@ Rodata.StartAutoSaveUserDataLoop(udb)
 
 Players.PlayerAdded:Connect(function(player)
 local data = Rodata.LoadUserData(udb, player.UserId)
-	if not data then
-		warn("no data for:", player.Name)
-		return
-	end
+    if not data then
+        warn("no data for:", player.Name)
+        return
+    end
 	
-	local leaderstats = Instance.new("Folder")
-	leaderstats.Name = "leaderstats"
-	leaderstats.Parent = player
+    local leaderstats = Instance.new("Folder")
+    leaderstats.Name = "leaderstats"
+    leaderstats.Parent = player
 	
-	local score = Instance.new("IntValue")
-	score.Name = "Score"
-	score.Value = data.score
-	score.Parent = leaderstats
+    local score = Instance.new("IntValue")
+    score.Name = "Score"
+    score.Value = data.score
+    score.Parent = leaderstats
 end)
 
 
 Players.PlayerRemoving:Connect(function(player)	
-	Rodata.SaveAndReleaseUserData(udb, player.UserId)
+    Rodata.SaveAndReleaseUserData(udb, player.UserId)
 end)
 
 
