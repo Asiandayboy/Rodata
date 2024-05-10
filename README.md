@@ -12,7 +12,7 @@ With Rodata, you can create a `database` to save your data. There are three diff
 - **Session locking**: only one server at a time can access a player's data, preventing item duplication and data overwrites
 - **OrderedDataStores**: OrderedDatabases allow you to create leaderboards 
 - **UnboundedDataStores**: UnboundedDatabases allow you to save global game data, such as game codes or guilds created by players
-- **Autosaving**: You have the option to enable autosaving 
+- **Autosaving**: You have the option to enable autosaving or use your own autosaving logic 
 - **Simple**: Very easy to use and setup 
 - **Change data globally**: Set a user's data from any server anytime. They don't even have to be in game.
 - **Typechecking**: This module is written in strict lua; Typechecking = good :]
