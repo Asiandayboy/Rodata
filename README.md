@@ -22,8 +22,8 @@ With Rodata, you can create a `database` to save your data. There are three diff
 
 
 ### Installation
-Go into the src folder, and add the code from the files in the children folder, paste them into their own module scripts. Then copy the code
-from Rodata.lua into a module script (name it "Rodata" if you want), and make sure to add those two child module scripts under the Rodata.lua module script.  
+Go into the src folder, and add the code from the files in the children folder, paste them into their own module scripts using the same file name (minus the .lua part). Then copy the code
+from Rodata.lua into a module script named `Rodata`, and make sure to add those two child module scripts under the Rodata  module script.  
 
 
 
