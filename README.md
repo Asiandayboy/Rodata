@@ -1,6 +1,6 @@
 # Rodata
 
-Rodata is a module script to help you save data in your Roblox games.
+Rodata is a library to help you save data in your Roblox games.
 
 With Rodata, you can create a `database` to save your data. There are three different types of databases depending on the data you're storing:
 - `UserDatabase` - A database for storing only player data
