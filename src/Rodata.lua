@@ -4,14 +4,14 @@
 
 	Features:
 	- Session locking: only one server at a time can access a player's data, preventing item duplication and data overwrites
-	- OrderedDataStores: You can create leaderboards with this
-	- Autosave: You have the option to enable autosaving for each individual player
+	- OrderedDataStores: OrderedDatabases allow you to create leaderboards 
+	- UnboundedDataStores: UnboundedDatabases allow you to save global game data, such as game codes or guilds created by players
+	- Autosave: You have the option to enable autosaving 
 	- Threadsafe: All normal datastore operations are queued for processing so that each operation runs one at time time, avoiding race conditions
 	- Simple: Very easy to use and setup 
 	- Change data globally: Set a user's data from any server anytime. They don't even have to be in game.
 	- Typechecking: This module is written in strict lua; Typechecking = good :]
-	- Direct indexing: Access the player's cached data directly with the dot . syntax 
-	- User metadata cache: An additional table used to store in-memory variables related to the player's data
+	- User metadata cache: An additional table is provided so you can store store in-memory variables related to the player's data
 
 
 	
@@ -98,10 +98,10 @@ local SESSION_LOCKED_ERR_MSG = "Data is session-locked by another server."
 local WAIT_FOR_SESSION_ERR_MSG = "WaitForSession"
 
 local SETTINGS = {
-	WAIT_FOR_SESSSION_MAX_RETRIES = 10,
+	WAIT_FOR_SESSSION_MAX_RETRIES = 10, 
 	TIME_BETWEEN_RETRIES_SECONDS = 4,
 	MSS_SESSION_LOCK_MAX_RETRIES = 10,
-	AUTOSAVE_INTERVAL_SECONDS = 30,
+	AUTOSAVE_INTERVAL_SECONDS = 30, -- autosave every x seconds
 	SESSION_LOCK_EXPIRATION_SECONDS = 3600 * 1 -- 2 hours [Note: 3600 seconds = 1 hour] 
 }
 
