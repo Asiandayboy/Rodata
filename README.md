@@ -22,9 +22,8 @@ With Rodata, you can create a `database` to save your data. There are three diff
 
 
 ### Installation
-- Option 1 - If you want to get it on [GitHub](https://github.com/Asiandayboy/Rodata), go into the src folder, and add the code from the files in the children folder, paste them into their own module scripts. Then copy the code
+Go into the src folder, and add the code from the files in the children folder, paste them into their own module scripts. Then copy the code
 from Rodata.lua into a module script (name it "Rodata" if you want), and make sure to add those two child module scripts under the Rodata.lua module script.  
-- Option 2 - Get the Roblox module script [here], and put it into your game somewhere in ServerScriptService.
 
 
 
