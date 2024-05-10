@@ -75,11 +75,11 @@ end)
 
 
 game:BindToClose(function()
-	for _, player in ipairs(Players:GetPlayers()) do
-		warn("BIND TO CLOSE")
-		Rodata.SaveAndReleaseUserData(udb, player.UserId)
-	end
-	if RunService:IsStudio() then task.wait(1) end -- give studio enough time to allow the data to save instead of shutting down right away
+    for _, player in ipairs(Players:GetPlayers()) do
+        warn("BIND TO CLOSE")
+        Rodata.SaveAndReleaseUserData(udb, player.UserId)
+    end
+    if RunService:IsStudio() then task.wait(1) end -- give studio enough time to allow the data to save instead of shutting down right away
 end)
 
 
