@@ -296,7 +296,10 @@ It may take a while.
 ```lua
 Rodata.ObliterateUserData(databaseName: string, userId: string)
 ```
-
+## Rodata.StartAutoSaveUserDataLoop()
+```lua
+Rodata.StartAutoSaveUserDataLoop(database: UserDatabase, player: Player)
+```
 
 
 
