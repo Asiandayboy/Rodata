@@ -42,9 +42,9 @@ local udb = Rodata.CreateNewUserDatabase("beta_score_test.1", "beta_score_test.1
 
 udb.AutosaveCallbacks = {
     function(userId, data, metadata)
-    local player = Players:GetPlayerByUserId(userId)
-    local odb = Rodata.GetDatabase("GAME8_o1")
-    Rodata.SetOrderedData(odb, player.Name, data.score)
+        local player = Players:GetPlayerByUserId(userId)
+        local odb = Rodata.GetDatabase("GAME8_o1") -- created in another script
+        Rodata.SetOrderedData(odb, player.Name, data.score)
     end,
 }
 
