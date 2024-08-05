@@ -164,10 +164,10 @@ Throws an error if the player's data has not been loaded or is not in the cache.
 Use this function to retrieve a player's data after their data has been loaded
 with Rodata.LoadUserData()
 ```lua
-Rodata.GetCachedUserData(database: UserDatabase, userId: string): Schema?
+Rodata.GetCachedUserData(database: UserDatabase, userId: number, scope: string?): Schema?
 ```
 ## Rodata.GetUserMetadata()
-Returns the user's metadata cache, which is an additioanl table to store in-memory
+Returns the user's metadata cache, which is an additional table to store in-memory
 variables related to a player's data, which means it does not get saved
 
 Throws an error if the player's data has not been loaded or is not in the cache
@@ -175,7 +175,7 @@ Throws an error if the player's data has not been loaded or is not in the cache
 One use case is to cache results from async calls, like MarketplaceService:UserOwnsGamePassAsync(),
 that you only need to call once
 ```lua
-Rodata.GetUserMetadata(database: UserDatabase, userId: string): Schema
+Rodata.GetUserMetadata(database: UserDatabase, userId: number, scope: string?): Schema
 ```
 ## Rodata.LoadUserData()
 Loads the user's data and acquires the session lock. This function yields the
@@ -186,7 +186,7 @@ Returns nil if an error occured while loading the data, else return the data.
 This function should only be called once for each player, when they join the game.
 To retrieve a player's data after they have joined, use Rodata.GetCachedUserData() 
 ```lua
-Rodata.LoadUserData(database: UserDatabase, userId: string): Schema?
+Rodata.LoadUserData(database: UserDatabase, userId: number, scope: string?): Schema?
 ```
 ## Rodata.SaveUserData()
 Saves the player's cached data in UserCache.data while maintaining the session lock. This function 
@@ -199,7 +199,7 @@ or after some important change).
 
 DO NOT use this function to save a player's data when they leave.
 ```lua
-Rodata.SaveUserData(database: UserDatabase, userId: string): boolean
+Rodata.SaveUserData(database: UserDatabase, userId: number, scope: string?): boolean
 ```
 ## Rodata.SaveAndReleaseUserData()
 Saves the player's data in UserCache.data and releases the session lock. This function yields the
@@ -209,7 +209,7 @@ Returns true if the operation succeeded; returns false if an error occurred.
 
 This function should be called when the player leaves the server or during shutdown
 ```lua
-Rodata.SaveAndReleaseUserData(database: UserDatabase, userId: string): boolean
+Rodata.SaveAndReleaseUserData(database: UserDatabase, userId: number, scope: string?): boolean
 ```
 
 ## Rodata.SetOrderedData()
@@ -260,7 +260,8 @@ Use this function if you want to just set data forcefully without caring about t
 ```lua
 Rodata.GlobalSetUserData(
   databaseRef: string | UserDatabase,
-  userId: string,
+  userId: number,
+  scope: string?
   newData: Schema,
   callback: (newData: Schema) -> ()?
 ): boolean
@@ -280,7 +281,8 @@ Rodata.GlobalSetUserData(
 ```lua
 Rodata.ListVersionsAsync(
   databaseName: string,
-  userId: string,
+  userId: number,
+  scope: string?,
   debugMode: boolean,
   limit: number?,
   ascendingOrder: boolean?,
@@ -344,7 +346,7 @@ a save will occur afterwards in another server.
 If this function is called when the player is not ingame, then that's simpler. If they join
 the next time, the default schema you provided will be loaded in; new fresh data.
 ```lua
-Rodata.RemoveUserData(databaseRef: string | UserDatabase, memoryStoreRef: string?, userId: string): boolean
+Rodata.RemoveUserData(databaseRef: string | UserDatabase, memoryStoreRef: string?, userId: number, scope: string?): boolean
 ```
 ## Rodata.ObliterateUserData()
 This function completely erases all data bounded to the player in a user
